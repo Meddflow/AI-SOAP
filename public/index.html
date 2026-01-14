@@ -166,20 +166,6 @@
           } catch { setError('Network error') }
           setLoading(false)
         }
-        const prefill = () => {
-          if (exampleIndex === '') return
-          const ex = EXAMPLES[Number(exampleIndex)]
-          setNotes(ex.notes)
-          setComplaint(ex.complaint)
-          setPain(ex.pain)
-          setTags(ex.tags)
-          setSbp(ex.sbp)
-          setDbp(ex.dbp)
-          setHr(ex.hr)
-          setRr(ex.rr)
-          setSpo2(ex.spo2)
-          setTemp(ex.temp)
-        }
         const copy = async () => {
           const t = ['S: ' + (soapS || ''), 'O: ' + (soapO || ''), 'A: ' + (soapA || ''), 'P: ' + (soapP || '')].join('\n').trim()
           if (!t.trim()) return
@@ -199,8 +185,6 @@
                 React.createElement('select', { value: model, onChange: e => setModel(e.target.value) },
                   React.createElement('option', { value: 'gemini 2.5 flash' }, 'gemini 2.5 flash'),
                   React.createElement('option', { value: 'gemini 2.5 pro' }, 'gemini 2.5 pro'),
-                  React.createElement('option', { value: 'gpt 5 mini' }, 'gpt 5 mini'),
-                  React.createElement('option', { value: 'gpt 5 nano' }, 'gpt 5 nano'),
                   React.createElement('option', { value: 'mistral small' }, 'mistral small')
                 )
               ),
@@ -210,8 +194,7 @@
                   React.createElement('select', { value: exampleIndex, onChange: e => setExampleIndex(e.target.value), className: 'flex1' },
                     React.createElement('option', { value: '' }, 'Select an example...'),
                     EXAMPLES.map((ex, i) => React.createElement('option', { key: i, value: String(i) }, ex.label))
-                  ),
-                  React.createElement('button', { className: 'btn', type: 'button', onClick: prefill }, 'Apply Example')
+                  )
                 )
               ),
               React.createElement('div', { className: 'field card' },
@@ -254,7 +237,6 @@
               ),
               React.createElement('div', { className: 'top-actions mt8 justify-end align-end' },
                 React.createElement('button', { className: 'btn', type: 'button', onClick: generate, disabled: loading }, loading ? 'Generating…' : 'Generate SOAP'),
-                React.createElement('button', { className: 'btn secondary', type: 'button', onClick: prefill }, 'Prefill Example')
               ),
               React.createElement('div', { id: 'error', className: 'error mt8' }, error)
             ),
