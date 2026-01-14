@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Visit Summary Generator</title>
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --border: #e5e7eb;
+        --text: #0f172a;
+        --muted: #64748b;
+        --accent: #2563eb;
+        --accent2: #1e40af;
+        --accent3: #38bdf8;
+      }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+      .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+      h1 { font-size: 24px; margin: 0 0 16px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      .field { display: flex; flex-direction: column; gap: 6px; }
+      label { font-weight: 600; }
+      input, select, textarea { padding: 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--card); color: var(--text); }
+      textarea { min-height: 140px; }
+      .row { display: flex; gap: 12px; align-items: center; }
+      .btn { padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer; font-weight: 600; color: #fff; background: linear-gradient(90deg, var(--accent), var(--accent3)); }
+      .btn.secondary { background: var(--accent2); }
+      .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+      .soap { white-space: pre-wrap; background: var(--card); padding: 12px; border-radius: 12px; border: 1px solid var(--border); min-height: 200px; }
+      .error { color: #b00020; font-weight: 600; }
+      .card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--card); }
+      .range-row { display: grid; grid-template-columns: 1fr 100px; gap: 10px; align-items: center; }
+      input[type=range] { width: 100%; accent-color: var(--accent); }
+      .chip { display: inline-block; background: #eef2ff; border: 1px solid #c7d2fe; padding: 4px 8px; border-radius: 999px; margin: 4px 6px 0 0; font-size: 12px; color: var(--accent2); }
+      .top-actions { display: flex; gap: 10px; align-items: center; }
+      .muted { color: var(--muted); font-size: 12px; }
+      .flex1 { flex: 1; }
+      .mt8 { margin-top: 8px; }
+      .justify-end { justify-content: flex-end; }
+      .align-end { align-self: flex-end; }
+      .badge { display:inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); }
+      .badge-ai { background: #dcfce7; color: #14532d; border-color: #86efac; }
+      .badge-fallback { background: #fee2e2; color: #7f1d1d; border-color: #fecaca; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Visit Summary Generator</h1>
+      <div id="root"></div>
+    </div>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="text/babel">
+      const { useState, useMemo } = React
+      const EXAMPLES = [
+        { label: 'Ear pain in flight', notes: 'Passenger is former diver, now pain during cruising in flight, advised clearing ears, took two tablets paracetamol previously.', complaint: 'Ear pain', pain: 4, sbp: 120, dbp: 80, hr: 72, rr: 14, spo2: 98, temp: 36.8, tags: 'Barotrauma,Eustachian tube dysfunction' },
+        { label: 'Chest pain with SOB', notes: 'Patient with substernal chest pain for 30 minutes, radiates to left arm, mild shortness of breath, risk factors include hypertension.', complaint: 'Chest pain', pain: 6, sbp: 145, dbp: 92, hr: 96, rr: 18, spo2: 95, temp: 36.9, tags: 'Acute coronary syndrome,Musculoskeletal chest pain' },
+        { label: 'Migraine headache', notes: 'Throbbing unilateral headache with photophobia and nausea, prior history of migraines, improved with rest.', complaint: 'Headache', pain: 7, sbp: 118, dbp: 76, hr: 80, rr: 16, spo2: 99, temp: 36.7, tags: 'Migraine,Tension headache' },
+        { label: 'Abdominal pain RLQ', notes: 'Right lower quadrant abdominal pain for 12 hours, worsens with movement, low-grade fever, decreased appetite.', complaint: 'Abdominal pain', pain: 5, sbp: 122, dbp: 78, hr: 88, rr: 16, spo2: 98, temp: 37.6, tags: 'Appendicitis,Gastroenteritis' }
+      ]
+      function asSoapParts(soap) {
+        if (!soap) return { s: '', o: '', a: '', p: '' }
+        if (typeof soap === 'string') {
+          const lines = String(soap).split(/\r?\n/)
+          const map = { S: [], O: [], A: [], P: [] }
+          let cur = null
+          for (const line of lines) {
+            const m = line.match(/^\s*(S|Subjective|O|Objective|A|Assessment|P|Plan)\s*:\s*(.*)$/i)
+            if (m) {
+              const k = m[1].toUpperCase()[0]
+              cur = k
+              const rest = m[2] || ''
+              if (rest.trim()) map[k].push(rest.trim())
+            } else if (cur) {
+              if (line.trim()) map[cur].push(line.trim())
+            }
+          }
+          return { s: map.S.join(' ').trim(), o: map.O.join(' ').trim(), a: map.A.join(' ').trim(), p: map.P.join(' ').trim() }
+        }
+        return {
+          s: soap.subjective || soap.Subjective || soap.S || soap.s || '',
+          o: soap.objective || soap.Objective || soap.O || soap.o || '',
+          a: soap.assessment || soap.Assessment || soap.A || soap.a || '',
+          p: soap.plan || soap.Plan || soap.P || soap.p || ''
+        }
+      }
+      const RangeNumber = ({ label, min, max, step, value, onChange }) => {
+        return (
+          React.createElement('div', { className: 'field flex1' },
+            React.createElement('label', null, label),
+            React.createElement('div', { className: 'range-row' },
+              React.createElement('input', { type: 'range', min, max, step, value: value ?? '', onChange: e => onChange(e.target.value === '' ? '' : Number(e.target.value)) }),
+              React.createElement('input', { type: 'number', min, max, step, value: value ?? '', onChange: e => onChange(e.target.value === '' ? '' : Number(e.target.value)), placeholder: '' })
+            )
+          )
+        )
+      }
+      const Chips = ({ tags }) => {
+        const t = (tags || '').split(',').map(s => s.trim()).filter(Boolean)
+        return React.createElement('div', null, t.map((x, i) => React.createElement('span', { className: 'chip', key: i }, x)))
+      }
+      const App = () => {
+        const [model, setModel] = useState('gemini 2.5 flash')
+        const [notes, setNotes] = useState('')
+        const [complaint, setComplaint] = useState('')
+        const [pain, setPain] = useState('')
+        const [tags, setTags] = useState('')
+        const [sbp, setSbp] = useState('')
+        const [dbp, setDbp] = useState('')
+        const [hr, setHr] = useState('')
+        const [rr, setRr] = useState('')
+        const [spo2, setSpo2] = useState('')
+        const [temp, setTemp] = useState('')
+        const [error, setError] = useState('')
+        const [soapS, setSoapS] = useState('')
+        const [soapO, setSoapO] = useState('')
+        const [soapA, setSoapA] = useState('')
+        const [soapP, setSoapP] = useState('')
+        const [loading, setLoading] = useState(false)
+        const [exampleIndex, setExampleIndex] = useState('')
+        const [provider, setProvider] = useState('')
+        const vitalsPreview = useMemo(() => {
+          const parts = []
+          if (sbp !== '' && dbp !== '') parts.push(`BP ${sbp}/${dbp}`)
+          if (hr !== '') parts.push(`HR ${hr} bpm`)
+          if (rr !== '') parts.push(`RR ${rr} rpm`)
+          if (spo2 !== '') parts.push(`SpO₂ ${spo2}%`)
+          if (temp !== '') parts.push(`Temp ${temp}°C`)
+          return parts.join(', ')
+        }, [sbp, dbp, hr, rr, spo2, temp])
+        const payload = () => ({
+          model,
+          notes: notes.trim(),
+          complaintType: complaint.trim(),
+          painScale: pain === '' ? undefined : Number(pain),
+          diagnosisTags: tags.trim(),
+          vitals: {
+            bp: (sbp !== '' && dbp !== '') ? `${sbp}/${dbp}` : '',
+            hr: hr === '' ? undefined : Number(hr),
+            rr: rr === '' ? undefined : Number(rr),
+            spo2: spo2 === '' ? undefined : Number(spo2),
+            temp: temp === '' ? undefined : Number(temp)
+          }
+        })
+        const generate = async () => {
+          setError('')
+          setSoapS(''); setSoapO(''); setSoapA(''); setSoapP('')
+          const p = payload()
+          if (!p.notes) { setError('Doctor notes are required'); return }
+          if (p.painScale !== undefined && (p.painScale < 0 || p.painScale > 10)) { setError('Pain scale must be between 0 and 10'); return }
+          setLoading(true)
+          try {
+            const r = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })
+            const data = await r.json()
+            if (!r.ok) setError(data.error || 'Generation failed')
+            else {
+              const parts = asSoapParts(data.soap)
+              setSoapS(parts.s || '')
+              setSoapO(parts.o || '')
+              setSoapA(parts.a || '')
+              setSoapP(parts.p || '')
+              setProvider('ai')
+            }
+          } catch { setError('Network error') }
+          setLoading(false)
+        }
+        const prefill = () => {
+          if (exampleIndex === '') return
+          const ex = EXAMPLES[Number(exampleIndex)]
+          setNotes(ex.notes)
+          setComplaint(ex.complaint)
+          setPain(ex.pain)
+          setTags(ex.tags)
+          setSbp(ex.sbp)
+          setDbp(ex.dbp)
+          setHr(ex.hr)
+          setRr(ex.rr)
+          setSpo2(ex.spo2)
+          setTemp(ex.temp)
+        }
+        const copy = async () => {
+          const t = ['S: ' + (soapS || ''), 'O: ' + (soapO || ''), 'A: ' + (soapA || ''), 'P: ' + (soapP || '')].join('\n').trim()
+          if (!t.trim()) return
+          try { await navigator.clipboard.writeText(t) } catch {}
+        }
+        const copyPart = async (part) => {
+          const map = { S: soapS, O: soapO, A: soapA, P: soapP }
+          const t = (map[part] || '').trim()
+          if (!t) return
+          try { await navigator.clipboard.writeText(t) } catch {}
+        }
+        return (
+          React.createElement('div', { className: 'grid' },
+            React.createElement('div', null,
+              React.createElement('div', { className: 'field card' },
+                React.createElement('label', null, 'Model'),
+                React.createElement('select', { value: model, onChange: e => setModel(e.target.value) },
+                  React.createElement('option', { value: 'gemini 2.5 flash' }, 'gemini 2.5 flash'),
+                  React.createElement('option', { value: 'gemini 2.5 pro' }, 'gemini 2.5 pro'),
+                  React.createElement('option', { value: 'gpt 5 mini' }, 'gpt 5 mini'),
+                  React.createElement('option', { value: 'gpt 5 nano' }, 'gpt 5 nano'),
+                  React.createElement('option', { value: 'mistral small' }, 'mistral small')
+                )
+              ),
+              React.createElement('div', { className: 'field card' },
+                React.createElement('label', null, 'Prefilled Examples'),
+                React.createElement('div', { className: 'row' },
+                  React.createElement('select', { value: exampleIndex, onChange: e => setExampleIndex(e.target.value), className: 'flex1' },
+                    React.createElement('option', { value: '' }, 'Select an example...'),
+                    EXAMPLES.map((ex, i) => React.createElement('option', { key: i, value: String(i) }, ex.label))
+                  ),
+                  React.createElement('button', { className: 'btn', type: 'button', onClick: prefill }, 'Apply Example')
+                )
+              ),
+              React.createElement('div', { className: 'field card' },
+                React.createElement('label', null, 'Doctor Notes'),
+                React.createElement('textarea', { value: notes, onChange: e => setNotes(e.target.value), placeholder: 'Enter free-text notes' })
+              ),
+              React.createElement('div', { className: 'field card' },
+                React.createElement('label', null, 'Complaint Type'),
+                React.createElement('select', { value: complaint, onChange: e => setComplaint(e.target.value) },
+                  React.createElement('option', { value: '' }, 'Select...'),
+                  React.createElement('option', null, 'Ear pain'),
+                  React.createElement('option', null, 'Chest pain'),
+                  React.createElement('option', null, 'Headache'),
+                  React.createElement('option', null, 'Abdominal pain'),
+                  React.createElement('option', null, 'Shortness of breath')
+                )
+              ),
+              React.createElement('div', { className: 'row card' },
+                React.createElement(RangeNumber, { label: 'Pain Scale', min: 0, max: 10, step: 1, value: pain, onChange: setPain }),
+                React.createElement('div', { className: 'field flex1' },
+                  React.createElement('label', null, 'Diagnosis Tags'),
+                  React.createElement('input', { type: 'text', value: tags, onChange: e => setTags(e.target.value), placeholder: 'comma separated' }),
+                  React.createElement(Chips, { tags })
+                )
+              ),
+              React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'row' },
+                  React.createElement(RangeNumber, { label: 'BP Systolic', min: 80, max: 200, step: 1, value: sbp, onChange: setSbp }),
+                  React.createElement(RangeNumber, { label: 'BP Diastolic', min: 50, max: 120, step: 1, value: dbp, onChange: setDbp })
+                ),
+                React.createElement('div', { className: 'row mt8' },
+                  React.createElement(RangeNumber, { label: 'HR', min: 0, max: 220, step: 1, value: hr, onChange: setHr }),
+                  React.createElement(RangeNumber, { label: 'RR', min: 6, max: 40, step: 1, value: rr, onChange: setRr })
+                ),
+                React.createElement('div', { className: 'row mt8' },
+                  React.createElement(RangeNumber, { label: 'SpO₂', min: 70, max: 100, step: 1, value: spo2, onChange: setSpo2 }),
+                  React.createElement(RangeNumber, { label: 'Temp (°C)', min: 30, max: 42, step: 0.1, value: temp, onChange: setTemp })
+                ),
+                React.createElement('div', { className: 'muted mt8' }, 'Vitals Preview: ', React.createElement('span', null, vitalsPreview))
+              ),
+              React.createElement('div', { className: 'top-actions mt8 justify-end align-end' },
+                React.createElement('button', { className: 'btn', type: 'button', onClick: generate, disabled: loading }, loading ? 'Generating…' : 'Generate SOAP'),
+                React.createElement('button', { className: 'btn secondary', type: 'button', onClick: prefill }, 'Prefill Example')
+              ),
+              React.createElement('div', { id: 'error', className: 'error mt8' }, error)
+            ),
+            React.createElement('div', null,
+              React.createElement('div', { className: 'field card' },
+                React.createElement('label', null, 'Statement'),
+                React.createElement('div', { className: 'soap' }, soapS),
+                React.createElement('div', { className: 'top-actions mt8' },
+                  React.createElement('button', { className: 'btn secondary', type: 'button', onClick: () => copyPart('S') }, 'Copy')
+                )
+              ),
+              React.createElement('div', { className: 'field card mt8' },
+                React.createElement('label', null, 'Objective'),
+                React.createElement('div', { className: 'soap' }, soapO),
+                React.createElement('div', { className: 'top-actions mt8' },
+                  React.createElement('button', { className: 'btn secondary', type: 'button', onClick: () => copyPart('O') }, 'Copy')
+                )
+              ),
+              React.createElement('div', { className: 'field card mt8' },
+                React.createElement('label', null, 'Assessment'),
+                React.createElement('div', { className: 'soap' }, soapA),
+                React.createElement('div', { className: 'top-actions mt8' },
+                  React.createElement('button', { className: 'btn secondary', type: 'button', onClick: () => copyPart('A') }, 'Copy')
+                )
+              ),
+              React.createElement('div', { className: 'field card mt8' },
+                React.createElement('label', null, 'Plan'),
+                React.createElement('div', { className: 'soap' }, soapP),
+                React.createElement('div', { className: 'top-actions mt8' },
+                  React.createElement('button', { className: 'btn secondary', type: 'button', onClick: () => copyPart('P') }, 'Copy'),
+                  React.createElement('button', { className: 'btn', type: 'button', onClick: copy }, 'Copy All')
+                )
+              )
+            )
+          )
+        )
+      }
+      ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App))
+    </script>
+  </body>
+</html>
